@@ -36,6 +36,12 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm test
+      - name: Ensure Electron runtime is downloaded
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node node_modules/electron/install.js
+          if (-not (Test-Path 'node_modules/electron/dist/electron.exe')) { throw 'Electron runtime download did not produce electron.exe.' }
       - name: Build Windows NSIS installer
         run: npm run dist
       - name: Prepare installer and SHA-256
