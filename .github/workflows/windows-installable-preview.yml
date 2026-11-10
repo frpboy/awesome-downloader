@@ -1,0 +1,73 @@
+name: Awesome Downloader Windows installable preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-installable-preview.yml
+      - desktop/**
+      - core/**
+      - renderer/**
+      - extension/**
+      - integration/**
+      - package.json
+      - package-lock.json
+      - vendor/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: awesome-downloader-windows-preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Build Windows NSIS installer
+        run: npm run dist
+      - name: Prepare installer and SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = 'release/Awesome-Downloader-Setup.exe'
+          if (-not (Test-Path $installer)) { throw "Expected installer not found: $installer" }
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Copy-Item $installer release-assets/
+          $hash = (Get-FileHash release-assets/Awesome-Downloader-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  Awesome-Downloader-Setup.exe" | Set-Content release-assets/SHA256SUMS.txt
+      - name: Determine version
+        id: meta
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=preview-v$version-build-$($env:GITHUB_RUN_NUMBER)-$($env:GITHUB_RUN_ATTEMPT)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Publish Windows installable preview
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Awesome Downloader v${{ steps.meta.outputs.version }} — Windows preview
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
+          body: |
+            Windows x64 NSIS installer built from the repository's main branch.
+
+            Code signing: the current electron-builder configuration disables executable signing. Windows SmartScreen may show an unsigned-app warning. Review source and checksum before installing.
+          files: |
+            release-assets/*
+          fail_on_unmatched_files: true
