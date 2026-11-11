@@ -283,7 +283,8 @@ export class DownloadEngine extends EventEmitter {
       for (const file of files) {
         const input = await fs.open(file, 'r');
         try {
-          for await (const chunk of input.createReadStream()) { signal.throwIfAborted(); await out.writeFile(chunk); }
+          // Increase highWaterMark from default 64 KiB to 512 KiB to reduce per-chunk I/O system calls and await overhead
+          for await (const chunk of input.createReadStream({ highWaterMark: 512 * 1024 })) { signal.throwIfAborted(); await out.writeFile(chunk); }
         } finally { await input.close(); }
       }
       await out.sync(); complete = true;
